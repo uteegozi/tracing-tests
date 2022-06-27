@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jaeger-app.fullname" . }}
+  labels:
+    {{- include "jaeger-app.labels" . | nindent 4 }}
+  {{- if eq .Values.jaegerAgent.installOption "auto" }}
+  annotations:
+    "sidecar.jaegertracing.io/inject": {{ .Values.jaegerAgent.jaegerInstance | quote }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "jaeger-app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "jaeger-app.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "jaeger-app.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- if eq .Values.jaegerAgent.installOption "daemon" }}
+          env:
+          - name: JAEGER_AGENT_HOST
+            valueFrom:
+              fieldRef:
+                fieldPath: status.hostIP
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if eq .Values.jaegerAgent.installOption "manual" }}
+        - resources: {}
+          terminationMessagePath: /dev/termination-log
+          name: jaeger-agent
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.hostIP
+          ports:
+            - name: zk-compact-trft
+              containerPort: 5775
+              protocol: UDP
+            - name: config-rest
+              containerPort: 5778
+              protocol: TCP
+            - name: jg-compact-trft
+              containerPort: 6831
+              protocol: UDP
+            - name: jg-binary-trft
+              containerPort: 6832
+              protocol: UDP
+            - name: admin-http
+              containerPort: 14271
+              protocol: TCP
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: jaeger-all-in-one-inmemory-trusted-ca
+              readOnly: true
+              mountPath: /etc/pki/ca-trust/extracted/pem
+            - name: jaeger-all-in-one-inmemory-service-ca
+              readOnly: true
+              mountPath: /etc/pki/ca-trust/source/service-ca
+          terminationMessagePolicy: File
+          image: >-
+            registry.redhat.io/rhosdt/jaeger-agent-rhel8@sha256:1abd4fb796c97c0b3cbff44097b89de2c248b09b89da49f7a9e1ee65f4323538
+          args:
+            - >-
+              --agent.tags=cluster=undefined,container.name=jaeger-app,deployment.name=jaegeragentsidecar-jaeger-app,host.ip=${HOST_IP:},pod.name=${POD_NAME:},pod.namespace=trace-proj
+            - >-
+              --reporter.grpc.host-port={{ .Values.jaegerAgent.collectorAddress }}
+            - >-
+              --reporter.grpc.tls.ca=/etc/pki/ca-trust/source/service-ca/service-ca.crt
+            - '--reporter.grpc.tls.enabled=true'
+      volumes:
+        - name: jaeger-all-in-one-inmemory-trusted-ca
+          configMap:
+            name: jaeger-all-in-one-inmemory-trusted-ca
+            items:
+              - key: ca-bundle.crt
+                path: tls-ca-bundle.pem
+            defaultMode: 420
+        - name: jaeger-all-in-one-inmemory-service-ca
+          configMap:
+            name: jaeger-all-in-one-inmemory-service-ca
+            items:
+              - key: service-ca.crt
+                path: service-ca.crt
+            defaultMode: 420
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
