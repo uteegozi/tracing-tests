@@ -1,4 +1,5 @@
 ## Quarkus application with Jaeger Instrumentation and Jaeger backend
+
 ### Jaeger Agent as sidecar
 
 **Automatic sidecar creation using Operator** - only works for applications using a "deployment":
@@ -17,21 +18,22 @@ metadata:
 The Operator will add label `sidecar.jaegertracing.io/injected:` 
 and the sidecar container including volume mounts for secure communication to the agent-collector.
 
-How does the operator choose which jaeger instance to connect the jaeger-agent to when "inject" is requested?
+How does the operator choose which jaeger instance to connect the jaeger-agent to when "sidecar.jaegertracing.io/inject" is requested?
 [Select function](https://github.com/jaegertracing/jaeger-operator/blob/main/pkg/inject/sidecar.go) - Order of evaluation:
 - **if** injection with specific jaeger instance name is requested on deployment, operator will try to find that in all watched namespaces,
-    - **if** found, will return that instance,
+    - **if** found, will return first found instance,
     - **else** will return empty
 - **if** above is defined on namespace, operator will try to find that in all watched namespaces,
-    - **if** found, will return that instance,
+    - **if** found, will return first found instance,
     - **else** will go on evaluating
-- **if** unspecified injection (annotation set to true) is requested on deployment or namespace
+- **if** injection without specific jaeger instance ( annotation value: true) is requested on deployment or namespace
     - **if** only one available instance exists in all watched namespaces, will return that instance
     - **else if** only one instance exists in current queried namespace, will return that instance
     - **else** return empty
 
+**Remark**: take care to use cluster wide unique jaeger instance names or else a wrong collector might be connected 
 
-### With Jaeger Collector in same NS 
+#### _With Jaeger Collector in same NS_ 
 **Use case:**  
 Multi-tenant environment where tenants are differentiated through NS - each NS has its own collector installation with each application to be traced has the agent installed as sidecar
 
@@ -40,7 +42,7 @@ Installs two projects, each with its own agent sidecar and backend in the applic
 First project configures unspecific jaeger instance via inject set to true; 
 Second project configures specific jaeger instance via inject set to (unique) jaeger instance name
 ```
-cd tracing/quarkus-jaeger
+cd <project root>/quarkus-jaeger
 ./install.sh COLL_SAME_NS
 ```
 To uninstall
@@ -48,7 +50,7 @@ To uninstall
 ./install.sh COLL_SAME_NS UNINSTALL
 ```
 
-### With Jaeger Collector in different NS
+#### _With Jaeger Collector in different NS_
 **Use case:**   
 Using one collector as a hub for several applications
 
@@ -57,7 +59,7 @@ Installs two projects, each with its own agent sidecar but using one jaeger inst
 First project configures unspecific jaeger instance via inject set to true;
 Second project configures specific jaeger instance via inject set to (unique) jaeger instance name
 ```
-cd tracing/quarkus-jaeger
+cd <project root>/quarkus-jaeger
 ./install.sh COLL_DIFF_NS
 ```
 To uninstall
@@ -75,10 +77,10 @@ just one agent needs to be installed per node and not, like with the sidecar,
 an agent per pod
 
 **Example:**   
-Installs two projects, each without an agent but with a JAEGER_AGENT_HOST env variable to allow access 
+Installs two projects, each without an agent sidecar but with a JAEGER_AGENT_HOST env variable to allow access 
 to installed agent daemonset
 ```
-cd tracing/quarkus-jaeger
+cd <project root>/quarkus-jaeger
 ./install.sh AGENT_DAEMONSET
 ```
 To uninstall
@@ -90,9 +92,9 @@ To uninstall
 **Use case:**  
 
 **Example:**   
-One application directly sending spans to the jaeger collector
+One application directly sending spans to the jaeger collector which is configured on the application container via environment variable QUARKUS_JAEGER_ENDPOINT
 ```
-cd tracing/quarkus-jaeger
+cd <project root>/quarkus-jaeger
 ./install.sh NO_AGENT
 ```
 To uninstall
@@ -102,9 +104,9 @@ To uninstall
 
 ## Quarkus application with Otel Instrumentation and Jaeger backend
 ### Deployed with Otel Collector sidecar
-
+TBD
 ### Deployed with Otel Collector as separate deployment 
-
+TBD
 
 ## Installation Procedures
 The below installation procedures are used inside the example installations through `install.sh`.
@@ -112,6 +114,7 @@ The below installation procedures are used inside the example installations thro
 ### Prerequisites
 - Openshift Container Platform admin access
 - Red Hat OpenShift distributed tracing platform Operator is installed
+- Red Hat OpenShift distributed tracing data collection Operator is installed - only for otel examples
 - oc cli, helm cli available on installing machine
 - you are logged into an OCP cluster
 
